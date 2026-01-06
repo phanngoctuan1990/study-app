@@ -1,361 +1,250 @@
-# 📖 Scale From Zero to Millions of Users
+# 📖 Back-of-the-envelope Estimation
 
-## Bản Dịch Tiếng Việt - ByteByteGo Chapter 2
+## Bản Dịch Tiếng Việt - ByteByteGo Chapter 3
 
-> **Nguồn gốc**: [ByteByteGo - Scale From Zero to Millions of Users](https://bytebytego.com/courses/system-design-interview/scale-from-zero-to-millions-of-users)
-
----
-
-Thiết kế một hệ thống hỗ trợ hàng triệu người dùng là thách thức lớn, và đó là một hành trình đòi hỏi sự tinh chỉnh liên tục và cải tiến không ngừng. Trong chương này, chúng ta sẽ xây dựng một hệ thống hỗ trợ một người dùng duy nhất và dần dần mở rộng nó để phục vụ hàng triệu người dùng.
+> **Nguồn gốc**: [ByteByteGo - Back-of-the-envelope Estimation](https://bytebytego.com/courses/system-design-interview/back-of-the-envelope-estimation)
 
 ---
 
-## 1. Thiết Lập Single Server (Máy Chủ Đơn)
+Trong phỏng vấn system design, đôi khi bạn được yêu cầu ước tính system capacity hoặc performance requirements bằng phương pháp **back-of-the-envelope estimation**. Theo Jeff Dean, Google Senior Fellow, "back-of-the-envelope calculations là những ước tính bạn tạo ra bằng cách kết hợp thought experiments và common performance numbers để có cảm nhận tốt về design nào sẽ đáp ứng được requirements của bạn" [1].
 
-"Hành trình vạn dặm bắt đầu từ một bước chân" - xây dựng hệ thống phức tạp cũng không khác. Để bắt đầu đơn giản, mọi thứ chạy trên một máy chủ duy nhất: web app, database, cache, v.v.
+Bạn cần có kiến thức tốt về scalability basics để thực hiện back-of-the-envelope estimation một cách hiệu quả. Các concepts sau đây cần được hiểu rõ: **power of two** [2], **latency numbers every programmer should know**, và **availability numbers**.
 
-### Request Flow (Luồng Request)
+---
 
-1. **Users truy cập websites thông qua domain names** (ví dụ: api.mysite.com). Thông thường, Domain Name System (DNS) là dịch vụ trả phí do bên thứ 3 cung cấp, không được host trên servers của chúng ta.
+## 1. Power of Two (Lũy thừa của 2)
 
-2. **IP address được trả về cho browser hoặc mobile app**. Ví dụ: IP 15.125.23.214.
+Mặc dù data volume có thể trở nên khổng lồ khi làm việc với distributed systems, nhưng tất cả tính toán đều quy về basics. Để có được calculations chính xác, điều quan trọng là phải biết data volume unit sử dụng power of 2.
 
-3. **Khi có IP address, các HTTP requests được gửi trực tiếp đến web server**.
+**Một byte là một chuỗi 8 bits. Một ký tự ASCII sử dụng 1 byte memory (8 bits).**
 
-4. **Web server trả về HTML pages hoặc JSON response** để rendering.
+Dưới đây là bảng giải thích data volume unit:
 
-### Traffic Source (Nguồn Traffic)
+### 📊 Table 1: Data Volume Units
 
-Traffic đến web server đến từ hai nguồn:
+| Power | Giá trị xấp xỉ           | Tên đầy đủ | Viết tắt |
+| ----- | ------------------------ | ---------- | -------- |
+| 10    | 1 Thousand (Nghìn)       | 1 Kilobyte | 1 KB     |
+| 20    | 1 Million (Triệu)        | 1 Megabyte | 1 MB     |
+| 30    | 1 Billion (Tỷ)           | 1 Gigabyte | 1 GB     |
+| 40    | 1 Trillion (Nghìn tỷ)    | 1 Terabyte | 1 TB     |
+| 50    | 1 Quadrillion (Triệu tỷ) | 1 Petabyte | 1 PB     |
 
-- **Web application**: Sử dụng kết hợp ngôn ngữ server-side (Java, Python, v.v.) để xử lý business logic, storage, v.v., và ngôn ngữ client-side (HTML và JavaScript) cho presentation.
+---
 
-- **Mobile application**: HTTP protocol là giao thức giao tiếp giữa mobile app và web server. JSON là format API response phổ biến để truyền dữ liệu.
+## 2. Latency Numbers Every Programmer Should Know
 
-**Ví dụ API Response (JSON):**
+Dr. Dean từ Google đã công bố thời gian của các computer operations điển hình vào năm 2010 [1]. Một số con số đã outdated vì máy tính ngày càng nhanh và mạnh hơn. Tuy nhiên, những con số này vẫn có thể cho chúng ta ý tưởng về sự nhanh chậm của các computer operations khác nhau.
 
-```json
-GET /users/12 – Lấy thông tin user có id = 12
+### 📊 Table 2: Latency Numbers
 
-{
-   "id": 12,
-   "firstName": "John",
-   "lastName": "Smith",
-   "address": {
-      "streetAddress": "21 2nd Street",
-      "city": "New York",
-      "state": "NY",
-      "postalCode": 10021
-   },
-   "phoneNumbers": [
-      "212 555-1234",
-      "646 555-4567"
-   ]
-}
+| Operation Name                                 | Time                    |
+| ---------------------------------------------- | ----------------------- |
+| L1 cache reference                             | 0.5 ns                  |
+| Branch mispredict                              | 5 ns                    |
+| L2 cache reference                             | 7 ns                    |
+| Mutex lock/unlock                              | 100 ns                  |
+| Main memory reference                          | 100 ns                  |
+| Compress 1K bytes with Zippy                   | 10,000 ns = 10 μs       |
+| Send 2K bytes over 1 Gbps network              | 20,000 ns = 20 μs       |
+| Read 1 MB sequentially from memory             | 250,000 ns = 250 μs     |
+| Round trip within the same datacenter          | 500,000 ns = 500 μs     |
+| Disk seek                                      | 10,000,000 ns = 10 ms   |
+| Read 1 MB sequentially from the network        | 10,000,000 ns = 10 ms   |
+| Read 1 MB sequentially from disk               | 30,000,000 ns = 30 ms   |
+| Send packet CA (California) → Netherlands → CA | 150,000,000 ns = 150 ms |
+
+### Notes về đơn vị thời gian:
+
+```
+ns = nanosecond    (nano giây)
+μs = microsecond   (micro giây)
+ms = millisecond   (mili giây)
+
+1 ns = 10^-9 seconds
+1 μs = 10^-6 seconds = 1,000 ns
+1 ms = 10^-3 seconds = 1,000 μs = 1,000,000 ns
+```
+
+### 📊 Figure 1: Visualized Latency Numbers (2020)
+
+> **Mô tả**: Biểu đồ so sánh thời gian của các operations khác nhau trong hệ thống máy tính và mạng. Các ô vuông có kích thước tỷ lệ với thời gian của mỗi operation.
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│                    LATENCY COMPARISON (2020)                               │
+├───────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│  ■ L1 cache (1ns)                     Rất nhỏ, gần như tức thời           │
+│                                                                            │
+│  ■■ L2 cache (4ns)                                                         │
+│                                                                            │
+│  ■■■■ Main memory (100ns)                                                  │
+│                                                                            │
+│  ████████ SSD random read (16μs)                                           │
+│                                                                            │
+│  ████████████████ Send 2KB over network (44μs)                             │
+│                                                                            │
+│  ████████████████████████████████ Round trip in DC (500μs)                 │
+│                                                                            │
+│  ████████████████████████████████████████████████ Disk seek (10ms)         │
+│                                                                            │
+│  ████████████████████████████████████████████████████████████████████████  │
+│  CA → Netherlands → CA (150ms)                                             │
+│                                                                            │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### Kết luận từ phân tích các con số:
+
+Bằng cách phân tích các con số trong Figure 1, chúng ta rút ra các kết luận sau:
+
+- **Memory is fast but the disk is slow.** (Memory nhanh nhưng disk chậm)
+
+- **Avoid disk seeks if possible.** (Tránh disk seeks nếu có thể)
+
+- **Simple compression algorithms are fast.** (Thuật toán nén đơn giản rất nhanh)
+
+- **Compress data before sending it over the internet if possible.** (Nén data trước khi gửi qua internet nếu có thể)
+
+- **Data centers are usually in different regions, and it takes time to send data between them.** (Data centers thường ở các regions khác nhau, và cần thời gian để gửi data giữa chúng)
+
+---
+
+## 3. Availability Numbers (Số khả dụng)
+
+**High availability** là khả năng của một hệ thống hoạt động liên tục trong một khoảng thời gian dài mong muốn. High availability được đo bằng phần trăm, với **100% nghĩa là service có 0 downtime**. Hầu hết các services nằm trong khoảng 99% và 100%.
+
+### Service Level Agreement (SLA)
+
+**Service level agreement (SLA)** là thuật ngữ thường được sử dụng bởi service providers. Đây là thỏa thuận giữa bạn (service provider) và khách hàng, và thỏa thuận này chính thức định nghĩa mức uptime mà service của bạn sẽ cung cấp.
+
+Các cloud providers lớn:
+
+- **Amazon** [4] - SLA: 99.9% trở lên
+- **Google** [5] - SLA: 99.9% trở lên
+- **Microsoft** [6] - SLA: 99.9% trở lên
+
+**Uptime traditionally được đo bằng "nines"**. Càng nhiều nines, càng tốt.
+
+### 📊 Table 3: Availability và Downtime
+
+| Availability % | Downtime/Day        | Downtime/Week | Downtime/Month | Downtime/Year     |
+| -------------- | ------------------- | ------------- | -------------- | ----------------- |
+| 99%            | 14.40 minutes       | 1.68 hours    | 7.31 hours     | **3.65 days**     |
+| 99.99%         | 8.64 seconds        | 1.01 minutes  | 4.38 minutes   | **52.60 minutes** |
+| 99.999%        | 864.00 milliseconds | 6.05 seconds  | 26.30 seconds  | **5.26 minutes**  |
+| 99.9999%       | 86.40 milliseconds  | 604.80 ms     | 2.63 seconds   | **31.56 seconds** |
+
+---
+
+## 4. Example: Estimate Twitter QPS and Storage Requirements
+
+> **Lưu ý**: Các con số sau đây chỉ dành cho bài tập này và không phải là số liệu thực tế từ Twitter.
+
+### Assumptions (Giả định):
+
+- **300 million** monthly active users (300 triệu MAU)
+- **50%** of users use Twitter daily (50% dùng hàng ngày)
+- Users post **2 tweets** per day on average (Trung bình 2 tweets/ngày)
+- **10%** of tweets contain media (10% tweets có media)
+- Data is stored for **5 years** (Lưu trữ 5 năm)
+
+### Estimations (Ước tính):
+
+#### Query per second (QPS) estimate:
+
+```
+Daily active users (DAU) = 300 million × 50% = 150 million
+
+Tweets QPS = 150 million × 2 tweets / 24 hours / 3600 seconds
+           = 300,000,000 / 86,400
+           ≈ 3,500 QPS
+
+Peak QPS = 2 × QPS = ~7,000 QPS
+```
+
+#### Media storage estimate:
+
+Chúng ta chỉ ước tính media storage ở đây.
+
+**Average tweet size:**
+
+- tweet_id: 64 bytes
+- text: 140 bytes
+- media: 1 MB
+
+```
+Media storage per day = 150 million × 2 × 10% × 1 MB
+                      = 30,000,000 MB
+                      = 30 TB per day
+
+5-year media storage = 30 TB × 365 × 5
+                     = 54,750 TB
+                     ≈ 55 PB (Petabytes)
 ```
 
 ---
 
-## 2. Database
+## 5. Tips
 
-Với sự tăng trưởng của user base, một server không đủ, và chúng ta cần nhiều servers: một cho web/mobile traffic, một cho database. **Tách web/mobile traffic (web tier) và database (data tier) servers cho phép chúng scale độc lập.**
+Back-of-the-envelope estimation là về **process**. **Solving the problem quan trọng hơn obtaining results.** Interviewers có thể đang test problem-solving skills của bạn.
 
-### Chọn Database Nào?
+### Các tips cần tuân theo:
 
-Bạn có thể chọn giữa **relational database** (quan hệ) và **non-relational database** (phi quan hệ).
+#### 1. Rounding and Approximation (Làm tròn và Xấp xỉ)
 
-**Relational databases** (RDBMS hoặc SQL database):
+Rất khó để thực hiện các phép tính phức tạp trong interview. Ví dụ, kết quả của "99987 / 9.1" là gì? Không cần phải dành thời gian quý báu để giải các bài toán phức tạp.
 
-- Các database phổ biến: MySQL, Oracle, PostgreSQL
-- Lưu trữ dữ liệu trong tables và rows
-- Có thể thực hiện JOIN operations giữa các tables
+**Precision không được kỳ vọng.** Sử dụng round numbers và approximation.
 
-**Non-Relational databases** (NoSQL):
+> Phép chia trên có thể được đơn giản hóa thành: "100,000 / 10"
 
-- Các database phổ biến: CouchDB, Neo4j, Cassandra, HBase, Amazon DynamoDB
-- Được chia thành 4 loại: key-value stores, graph stores, column stores, document stores
-- Thường không hỗ trợ JOIN operations
+#### 2. Write down your assumptions (Ghi lại các giả định)
 
-**Khi nào dùng NoSQL?**
+Ghi lại các assumptions của bạn để tham khảo sau này.
 
-- Ứng dụng yêu cầu **độ trễ cực thấp** (super-low latency)
-- Dữ liệu **phi cấu trúc** (unstructured), không có quan hệ
-- Chỉ cần **serialize và deserialize data** (JSON, XML, YAML)
-- Cần lưu trữ **lượng dữ liệu khổng lồ**
+#### 3. Label your units (Ghi rõ đơn vị)
 
----
+Khi bạn viết "5", nó có nghĩa là 5 KB hay 5 MB? Bạn có thể tự confuse mình. Ghi rõ đơn vị vì "5 MB" giúp loại bỏ sự mơ hồ.
 
-## 3. Vertical Scaling vs Horizontal Scaling
+#### 4. Commonly asked estimations (Các estimation thường được hỏi)
 
-**Vertical scaling (Scale up)**: Thêm nhiều power (CPU, RAM, v.v.) vào servers hiện có.
+- QPS (Queries Per Second)
+- Peak QPS
+- Storage
+- Cache
+- Number of servers
 
-**Horizontal scaling (Scale out)**: Thêm nhiều servers vào pool of resources.
-
-### Hạn chế của Vertical Scaling:
-
-- Có **giới hạn cứng** - không thể thêm CPU và memory vô hạn vào một server
-- **Không có failover và redundancy** - nếu server chết, website/app chết theo
-
-**Horizontal scaling phù hợp hơn cho ứng dụng quy mô lớn** do các hạn chế của vertical scaling.
+Bạn có thể practice các calculations này khi chuẩn bị cho interview. **Practice makes perfect!**
 
 ---
 
-## 4. Load Balancer
+## Tổng kết
 
-**Load balancer phân phối đều incoming traffic** đến các web servers trong load-balanced set.
-
-### Cách hoạt động:
-
-- Users kết nối đến **public IP** của load balancer
-- Web servers **không thể truy cập trực tiếp** từ clients (bảo mật hơn)
-- **Private IPs** được sử dụng cho giao tiếp giữa các servers
-
-### Lợi ích:
-
-- **Failover**: Nếu server 1 offline, traffic tự động chuyển sang server 2
-- **Scalability**: Dễ dàng thêm servers khi traffic tăng
-- **No single point of failure**: Website không bị down khi 1 server chết
+Congratulations on getting this far! Now give yourself a pat on the back. Good job!
 
 ---
 
-## 5. Database Replication
+## Reference Materials (Tài liệu tham khảo)
 
-> "Database replication có thể được sử dụng trong nhiều database management systems, thường với quan hệ master/slave giữa bản gốc (master) và các bản sao (slaves)" - Wikipedia
+1. **J. Dean. Google Pro Tip: Use Back-Of-The-Envelope-Calculations To Choose The Best Design:**
+   http://highscalability.com/blog/2011/1/26/google-pro-tip-use-back-of-the-envelope-calculations-to-choo.html
 
-### Master Database:
+2. **System design primer:**
+   https://github.com/donnemartin/system-design-primer
 
-- Chỉ hỗ trợ **write operations**
-- Nhận tất cả data-modifying commands: INSERT, DELETE, UPDATE
+3. **Latency Numbers Every Programmer Should Know:**
+   https://colin-scott.github.io/personal_website/research/interactive_latency.html
 
-### Slave Database:
+4. **Amazon Compute Service Level Agreement:**
+   https://aws.amazon.com/compute/sla/
 
-- Nhận bản sao data từ master
-- Chỉ hỗ trợ **read operations**
-- Số lượng slaves thường lớn hơn masters (vì read nhiều hơn write)
+5. **Compute Engine Service Level Agreement (SLA):**
+   https://cloud.google.com/compute/sla
 
-### Lợi ích:
-
-- **Better performance**: Writes vào master, reads phân tán qua slaves → xử lý nhiều queries song song
-- **Reliability**: Data được replicate qua nhiều locations, không sợ mất data khi có thiên tai
-- **High availability**: Website vẫn hoạt động dù một database offline
-
-### Khi Database Offline:
-
-- **Slave offline**: Reads chuyển tạm sang master hoặc slaves khác
-- **Master offline**: Một slave được promote thành master mới (phức tạp hơn, có thể cần chạy data recovery scripts)
-
----
-
-## 6. Cache
-
-**Cache là vùng lưu trữ tạm thời** lưu kết quả của các responses tốn kém hoặc data được truy cập thường xuyên trong memory, giúp các requests tiếp theo được phục vụ nhanh hơn.
-
-### Cache Tier
-
-Cache tier là **tầng data store tạm thời, nhanh hơn database rất nhiều**.
-
-**Read-through cache strategy:**
-
-1. Web server kiểm tra cache trước
-2. Nếu có (cache hit) → trả về ngay
-3. Nếu không có (cache miss) → query database → lưu vào cache → trả về
-
-**Ví dụ Memcached APIs:**
-
-```python
-SECONDS = 1
-cache.set('myKey', 'hi there', 3600 * SECONDS)
-cache.get('myKey')
-```
-
-### Considerations khi dùng Cache:
-
-- **Khi nào dùng**: Data được read thường xuyên nhưng ít modify
-- **Expiration policy**: Không quá ngắn (reload nhiều), không quá dài (data cũ)
-- **Consistency**: Giữ data store và cache đồng bộ
-- **Mitigating failures**: Nhiều cache servers tránh SPOF (Single Point of Failure)
-- **Eviction Policy**: LRU (Least Recently Used), LFU (Least Frequently Used), FIFO
-
----
-
-## 7. Content Delivery Network (CDN)
-
-**CDN là mạng lưới các servers phân tán địa lý** để phân phối static content như images, videos, CSS, JavaScript files.
-
-### Cách CDN hoạt động:
-
-1. User request image từ CDN URL
-2. Nếu CDN không có → request từ origin server
-3. Origin trả về image với HTTP header TTL (Time-to-Live)
-4. CDN cache image và trả về cho user
-5. User tiếp theo request → trả từ cache (nếu chưa hết TTL)
-
-### Considerations:
-
-- **Cost**: CDN tính phí theo data transfer, cân nhắc những gì đáng cache
-- **Cache expiry**: Không quá dài (content cũ), không quá ngắn (reload nhiều)
-- **CDN fallback**: Có phương án backup khi CDN outage
-- **Invalidating files**: Dùng APIs của CDN vendors hoặc object versioning (image.png?v=2)
-
----
-
-## 8. Stateless Web Tier
-
-Để scale web tier horizontally, cần **di chuyển state ra khỏi web tier**.
-
-### Stateful Architecture (Có trạng thái):
-
-- Server nhớ client data từ request này sang request khác
-- User A phải luôn được route đến Server 1 (vì đó là nơi lưu session của A)
-- **Vấn đề**: Khó thêm/bớt servers, khó handle server failures
-
-### Stateless Architecture (Không trạng thái):
-
-- Server **không giữ state information**
-- State data được lưu trong **shared data store** (Redis, database)
-- HTTP requests từ users có thể gửi đến **bất kỳ web server nào**
-- **Đơn giản hơn, robust hơn, scalable hơn**
-
----
-
-## 9. Data Centers
-
-Khi website phát triển và thu hút users quốc tế, cần **hỗ trợ multiple data centers** để cải thiện availability và user experience.
-
-### GeoDNS Routing:
-
-- Users được route đến data center gần nhất
-- Ví dụ: x% traffic ở US-East, (100-x)% ở US-West
-
-### Thách thức Multi-Data Center:
-
-- **Traffic redirection**: Dùng GeoDNS để direct traffic
-- **Data synchronization**: Replicate data across data centers
-- **Test and deployment**: Test ở nhiều locations, dùng automated deployment tools
-
----
-
-## 10. Message Queue
-
-**Message queue là component bền vững, lưu trong memory**, hỗ trợ giao tiếp bất đồng bộ (asynchronous communication).
-
-### Kiến trúc cơ bản:
-
-- **Producers/Publishers**: Tạo messages và publish vào queue
-- **Consumers/Subscribers**: Kết nối queue và thực hiện actions
-
-### Lợi ích Decoupling:
-
-- Producer có thể post message khi consumer unavailable
-- Consumer có thể read messages khi producer unavailable
-- Producer và consumer **scale độc lập**
-
-**Ví dụ**: Photo processing
-
-- Web servers publish jobs vào queue
-- Photo processing workers pick up jobs và xử lý bất đồng bộ
-- Queue lớn → thêm workers; Queue trống → giảm workers
-
----
-
-## 11. Logging, Metrics, Automation
-
-Khi site phát triển lớn, cần đầu tư vào các tools này:
-
-### Logging:
-
-- Monitor error logs để identify errors và problems
-- Aggregate logs vào centralized service để dễ search và viewing
-
-### Metrics:
-
-- **Host level**: CPU, Memory, disk I/O
-- **Aggregated level**: Performance của database tier, cache tier
-- **Business metrics**: Daily active users, retention, revenue
-
-### Automation:
-
-- **Continuous integration**: Verify code check-in qua automation
-- Automate build, test, deploy process
-
----
-
-## 12. Database Scaling
-
-### Vertical Scaling (Scale Up):
-
-- Thêm power (CPU, RAM, DISK) vào machine hiện có
-- Ví dụ: Amazon RDS có server với 24 TB RAM
-- **Hạn chế**:
-  - Có hardware limits
-  - Greater risk of SPOF
-  - Chi phí cao
-
-### Horizontal Scaling (Sharding):
-
-- Thêm nhiều servers
-- Tách large databases thành các shards nhỏ hơn
-- Mỗi shard có cùng schema nhưng data khác nhau
-
-**Ví dụ**: Sharding theo user_id
-
-- user_id % 4 = 0 → Shard 0
-- user_id % 4 = 1 → Shard 1
-- ...
-
-### Thách thức của Sharding:
-
-**Resharding data**: Cần khi:
-
-- Single shard không thể hold thêm data
-- Uneven data distribution (shard exhaustion)
-- Giải pháp: Consistent hashing
-
-**Celebrity problem (Hotspot key)**:
-
-- Data của celebrities (Katy Perry, Justin Bieber) tập trung vào 1 shard
-- Giải pháp: Allocate separate shard cho celebrity, có thể cần partition thêm
-
-**Join and de-normalization**:
-
-- Khó perform join operations across shards
-- Giải pháp: De-normalize database
-
----
-
-## 13. Millions of Users and Beyond
-
-Scaling là **iterative process**. Tổng kết các kỹ thuật để scale đến millions of users:
-
-| Kỹ thuật                                 | Mục đích                    |
-| ---------------------------------------- | --------------------------- |
-| Keep web tier **stateless**              | Dễ scale horizontally       |
-| Build **redundancy** at every tier       | Failover, high availability |
-| **Cache** data as much as you can        | Giảm tải database, tăng tốc |
-| Support **multiple data centers**        | Phục vụ users toàn cầu      |
-| Host **static assets in CDN**            | Giảm latency                |
-| Scale data tier by **sharding**          | Handle data lớn             |
-| **Split tiers into individual services** | Microservices               |
-| **Monitor** and use **automation tools** | Proactive operations        |
-
----
-
-## Tài Liệu Tham Khảo
-
-1. [Hypertext Transfer Protocol](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol)
-2. [Should you go Beyond Relational Databases?](https://blog.teamtreehouse.com/should-you-go-beyond-relational-databases)
-3. [Replication (computing)](<https://en.wikipedia.org/wiki/Replication_(computing)>)
-4. [Multi-master replication](https://en.wikipedia.org/wiki/Multi-master_replication)
-5. [NDB Cluster Replication](https://dev.mysql.com/doc/refman/8.4/en/mysql-cluster-replication-multi-source.html)
-6. [Caching Strategies and How to Choose the Right One](https://codeahoy.com/2017/08/11/caching-strategies-and-how-to-choose-the-right-one/)
-7. [Scaling Memcache at Facebook](https://www.usenix.org/system/files/conference/nsdi13/nsdi13-final170_update.pdf)
-8. [Single point of failure](https://en.wikipedia.org/wiki/Single_point_of_failure)
-9. [Amazon CloudFront Dynamic Content Delivery](https://aws.amazon.com/cloudfront/dynamic-content/)
-10. [Configure Sticky Sessions for Your Classic Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/classic/elb-sticky-sessions.html)
-11. [Active-Active for Multi-Regional Resiliency](https://netflixtechblog.com/active-active-for-multi-regional-resiliency-c47719f6685b)
-12. [Amazon EC2 High Memory Instances](https://aws.amazon.com/ec2/instance-types/high-memory/)
-13. [What it takes to run Stack Overflow](http://nickcraver.com/blog/2013/11/22/what-it-takes-to-run-stack-overflow)
-14. [What The Heck Are You Actually Using NoSQL For](http://highscalability.com/blog/2010/12/6/what-the-heck-are-you-actually-using-nosql-for.html)
+6. **SLA summary for Azure services:**
+   https://azure.microsoft.com/en-us/support/legal/sla/summary/
 
 ---
 

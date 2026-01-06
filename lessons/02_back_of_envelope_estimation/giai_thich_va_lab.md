@@ -1,753 +1,533 @@
-# 📚 Bài 1: Scale From Zero to Millions of Users
+# 📚 Bài 2: Back-of-the-envelope Estimation
 
 ## Giải Thích Concepts + Lab + Tổng Kết
 
-> **Mục tiêu**: Hiểu cách xây dựng hệ thống từ 1 user đến hàng triệu users
+> **Mục tiêu**: Học cách ước tính nhanh capacity và performance của hệ thống
 
 ---
 
 # PHẦN 1: GIẢI THÍCH CÁC CONCEPTS KHÓ HIỂU 🎯
 
-## 1. Structured Data vs Unstructured Data
+## 1. Back-of-the-envelope Estimation là gì?
 
-### ❓ "Data are unstructured" là gì?
+### ❓ Tại sao gọi là "Back of the envelope" (Mặt sau của phong bì)?
 
-**Structured Data (Dữ liệu có cấu trúc):**
+**🎯 Ví dụ thực tế - Tính tiền ăn:**
 
-- Dữ liệu được tổ chức theo bảng, có cột rõ ràng
-- Ví dụ: Bảng Excel có các cột "Tên", "Tuổi", "Email"
+Bạn đi ăn với 5 người bạn, mỗi người gọi món khác nhau. Thay vì cộng chính xác từng món, bạn **ước tính nhanh**:
 
-```
-| ID | Tên      | Tuổi | Email           |
-|----|----------|------|-----------------|
-| 1  | Tuấn     | 28   | tuan@email.com  |
-| 2  | Hoa      | 25   | hoa@email.com   |
-```
+- "Mỗi người khoảng 100k" → 6 người × 100k = ~600k
 
-**Unstructured Data (Dữ liệu phi cấu trúc):**
+Đó chính là **back-of-the-envelope estimation** - ước tính nhanh, đủ chính xác để ra quyết định, không cần máy tính.
 
-- Dữ liệu không có format cố định
-- Mỗi record có thể có các fields khác nhau
+**Trong System Design:**
 
-**🍜 Ví dụ thực tế - Quán Phở:**
-
-| Structured (SQL)                      | Unstructured (NoSQL)                                                        |
-| ------------------------------------- | --------------------------------------------------------------------------- |
-| Menu cố định: Phở bò, Phở gà, giá 50k | Khách order: "Cho tôi phở bò, thêm hành, ít nước, nhiều thịt, không giá đỗ" |
-| Mỗi món có giá cố định                | Mỗi order có yêu cầu riêng                                                  |
-
-**Khi nào dùng gì?**
-
-- **SQL (Structured)**: Đơn hàng, tài khoản ngân hàng - cần chính xác, có quan hệ
-- **NoSQL (Unstructured)**: Profile user, log, comments - linh hoạt, thay đổi nhiều
+> "Estimation là quá trình ước tính bằng thought experiments và performance numbers để biết design nào đáp ứng được yêu cầu" - Jeff Dean, Google
 
 ---
 
-## 2. Serialize và Deserialize
+## 2. Power of Two (Lũy thừa của 2)
 
-### ❓ "Serialize and deserialize data" nghĩa là gì?
+### ❓ Tại sao cần biết Power of 2?
 
-**🎁 Ví dụ - Gửi đồ qua bưu điện:**
+Máy tính hoạt động dựa trên hệ nhị phân (binary), nên data units đều là lũy thừa của 2.
 
-| Bước     | Tên kỹ thuật    | Ví dụ thực tế                                             |
-| -------- | --------------- | --------------------------------------------------------- |
-| Đóng gói | **Serialize**   | Bạn muốn gửi chiếc xe đạp → phải tháo rời, đóng vào thùng |
-| Mở gói   | **Deserialize** | Người nhận mở thùng → lắp ráp lại thành xe đạp            |
+### 📊 Bảng Power of Two (PHẢI NHỚ!)
 
-**Trong lập trình:**
+| Power | Giá trị                         | Tên gọi    | Viết tắt | Ví dụ thực tế          |
+| ----- | ------------------------------- | ---------- | -------- | ---------------------- |
+| 2^10  | ~1,000 (1 Nghìn)                | 1 Kilobyte | 1 KB     | 1 trang text           |
+| 2^20  | ~1,000,000 (1 Triệu)            | 1 Megabyte | 1 MB     | 1 bức ảnh              |
+| 2^30  | ~1,000,000,000 (1 Tỷ)           | 1 Gigabyte | 1 GB     | 1 bộ phim              |
+| 2^40  | ~1,000,000,000,000 (1 Nghìn Tỷ) | 1 Terabyte | 1 TB     | 1000 bộ phim           |
+| 2^50  | ~1 Triệu Tỷ                     | 1 Petabyte | 1 PB     | Toàn bộ YouTube 1 ngày |
 
-```python
-# Object trong Python (không thể gửi qua mạng)
-user = {
-    "id": 1,
-    "name": "Tuấn",
-    "age": 28
-}
+### 🍜 Ví dụ - Quán Phở:
 
-# SERIALIZE: Chuyển thành chuỗi JSON (có thể gửi qua mạng)
-json_string = '{"id": 1, "name": "Tuấn", "age": 28}'
+| Unit | Ví dụ                        |
+| ---- | ---------------------------- |
+| 1 KB | Đơn hàng 1 tô phở (text nhỏ) |
+| 1 MB | Menu có hình ảnh             |
+| 1 GB | Video quảng cáo quán         |
+| 1 TB | Camera an ninh lưu 1 tháng   |
 
-# DESERIALIZE: Chuyển chuỗi JSON thành object
-user = json.loads(json_string)
-```
-
-**Tại sao cần?**
-
-- Máy tính khác nhau không thể gửi objects trực tiếp
-- Phải "đóng gói" thành text (JSON, XML) để gửi qua mạng
-- Bên nhận "mở gói" để dùng lại
-
----
-
-## 3. DNS (Domain Name System)
-
-### 🎯 Ví dụ - Danh Bạ Điện Thoại:
-
-| Không có DNS          | Có DNS                |
-| --------------------- | --------------------- |
-| Nhớ số: 14.225.0.35   | Nhớ tên: google.com   |
-| Như nhớ số điện thoại | Như tìm trong danh bạ |
-
-**Flow thực tế:**
+### 💡 Mẹo nhớ nhanh:
 
 ```
-Bạn gõ "facebook.com"
-    → DNS tìm: "facebook.com là IP nào?"
-    → Trả về: 157.240.1.35
-    → Trình duyệt kết nối đến 157.240.1.35
+Mỗi 10 lũy thừa = Nhân thêm 1000 lần
+KB → MB → GB → TB → PB
+  ×1000  ×1000  ×1000  ×1000
 ```
 
 ---
 
-## 4. Load Balancer
+## 3. Latency Numbers Every Programmer Should Know
 
-### 🎯 Ví dụ - Điều Phối Viên Tại Ngân Hàng:
+### ❓ Latency là gì?
 
-**Không có Load Balancer:**
+**Latency = Thời gian chờ** để một operation hoàn thành.
 
-- 100 khách hàng xếp hàng 1 quầy
-- Nhân viên quá tải, khách hàng chờ lâu
+### 🎯 Ví dụ - Các loại "chờ" trong cuộc sống:
 
-**Có Load Balancer:**
+| Operation                  | Latency           | Ví dụ đời thường        |
+| -------------------------- | ----------------- | ----------------------- |
+| L1 Cache                   | 0.5 ns            | Nhớ lại tên mình        |
+| RAM                        | 100 ns            | Nhớ lại số điện thoại   |
+| SSD Read                   | 16,000 ns = 16 μs | Mở sổ tay tìm thông tin |
+| HDD Seek                   | 10 ms             | Đi tìm sách trong kệ    |
+| Network (Same DC)          | 500 μs            | Hỏi người bàn bên cạnh  |
+| Network (CA → Netherlands) | 150 ms            | Gọi điện quốc tế        |
 
-- Bảo vệ (Load Balancer) đứng cửa
-- Điều khách đến quầy nào đang trống
-- 3 quầy phục vụ 100 khách nhanh hơn
+### 📊 Bảng Latency Numbers (PHẢI NHỚ!)
 
-```
-              Load Balancer
-                   |
-        ┌──────────┼──────────┐
-        ↓          ↓          ↓
-    Server 1   Server 2   Server 3
-```
+| Operation                | Thời gian         | So sánh                 |
+| ------------------------ | ----------------- | ----------------------- |
+| L1 cache reference       | 0.5 ns            | Cực nhanh               |
+| L2 cache reference       | 7 ns              | 14× chậm hơn L1         |
+| Main memory (RAM)        | 100 ns            | 200× chậm hơn L1        |
+| SSD random read          | 16,000 ns = 16 μs | 32,000× chậm hơn L1     |
+| Read 1 MB from memory    | 250 μs            |                         |
+| Round trip in datacenter | 500 μs            |                         |
+| Disk seek (HDD)          | 10 ms             | 20 triệu × chậm hơn L1  |
+| Read 1 MB from network   | 10 ms             |                         |
+| Read 1 MB from disk      | 30 ms             |                         |
+| CA → Netherlands → CA    | 150 ms            | 300 triệu × chậm hơn L1 |
 
-**Lợi ích:**
-
-- ✅ Không server nào bị quá tải
-- ✅ Nếu 1 server chết, 2 server còn lại vẫn chạy
-- ✅ Thêm server dễ dàng khi cần
-
----
-
-## 5. Database Replication (Master-Slave)
-
-### 🎯 Ví dụ - Cửa Hàng & Chi Nhánh:
-
-| Master (Cửa hàng chính) | Slave (Chi nhánh)         |
-| ----------------------- | ------------------------- |
-| Nhập hàng, cập nhật giá | Chỉ bán hàng              |
-| Quản lý kho             | Đọc thông tin từ hệ thống |
-| **Write operations**    | **Read operations**       |
-
-**Tại sao cần?**
-
-- Đọc data (Read) nhiều hơn ghi data (Write) - thường 90% Read, 10% Write
-- Master xử lý Write → Slave copy data → Slave phục vụ Read
-- Giảm tải cho Master, tăng tốc độ đọc
+### 💡 Kết luận quan trọng:
 
 ```
-         Write
-           ↓
-       [Master DB]
-           |
-    ───────┼───────
-    ↓      ↓      ↓
- [Slave] [Slave] [Slave]
-    ↑      ↑      ↑
-        Read
+┌─────────────────────────────────────────────────────────────┐
+│  1. Memory NHANH, Disk CHẬM                                 │
+│  2. Tránh disk seeks nếu có thể → Dùng Cache!               │
+│  3. Nén data trước khi gửi qua mạng                         │
+│  4. Data centers ở xa = Latency cao                         │
+│  5. SSD nhanh hơn HDD 100-1000×                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 🎨 Đơn vị thời gian:
+
+```
+ns (nanosecond)  = 10^-9 seconds = 0.000000001 giây
+μs (microsecond) = 10^-6 seconds = 1,000 ns
+ms (millisecond) = 10^-3 seconds = 1,000 μs = 1,000,000 ns
 ```
 
 ---
 
-## 6. Cache
+## 4. Availability Numbers (Số khả dụng)
 
-### 🎯 Ví dụ - Quán Cà Phê:
+### ❓ Availability là gì?
 
-**Không có Cache:**
+**Availability = % thời gian hệ thống hoạt động**
 
-- Khách order "Cà phê sữa"
-- Nhân viên pha mới từ đầu (5 phút)
+| Availability | Nghĩa là                    |
+| ------------ | --------------------------- |
+| 99%          | Hệ thống down 3.65 ngày/năm |
+| 99.9%        | Hệ thống down 8.76 giờ/năm  |
+| 99.99%       | Hệ thống down 52.6 phút/năm |
+| 99.999%      | Hệ thống down 5.26 phút/năm |
 
-**Có Cache:**
+### 🎯 Ví dụ - SLA của Cloud Providers:
 
-- Nhân viên pha sẵn 10 ly cà phê sữa
-- Khách order → Lấy ly có sẵn (10 giây)
-- Hết hàng → Pha thêm
+| Provider       | SLA    |
+| -------------- | ------ |
+| AWS EC2        | 99.99% |
+| Google Compute | 99.99% |
+| Azure          | 99.99% |
 
-| Thuật ngữ              | Ý nghĩa                                   |
-| ---------------------- | ----------------------------------------- |
-| **Cache Hit**          | Có sẵn trong cache → trả ngay             |
-| **Cache Miss**         | Không có → query database → lưu vào cache |
-| **TTL (Time To Live)** | Thời gian cà phê còn tươi (1 giờ)         |
-| **Eviction**           | Đổ bỏ cà phê nguội                        |
+### 📊 Bảng Availability (PHẢI NHỚ!)
 
----
+| Availability       | Downtime/Ngày | Downtime/Tuần | Downtime/Tháng | Downtime/Năm  |
+| ------------------ | ------------- | ------------- | -------------- | ------------- |
+| 99% (2 nines)      | 14.4 phút     | 1.68 giờ      | 7.31 giờ       | **3.65 ngày** |
+| 99.9% (3 nines)    | 1.44 phút     | 10.1 phút     | 43.8 phút      | **8.76 giờ**  |
+| 99.99% (4 nines)   | 8.64 giây     | 1.01 phút     | 4.38 phút      | **52.6 phút** |
+| 99.999% (5 nines)  | 864 ms        | 6.05 giây     | 26.3 giây      | **5.26 phút** |
+| 99.9999% (6 nines) | 86.4 ms       | 604 ms        | 2.63 giây      | **31.6 giây** |
 
-## 7. CDN (Content Delivery Network)
+### 🍜 Ví dụ - Quán Phở:
 
-### 🎯 Ví dụ - Chuỗi Cửa Hàng Tiện Lợi:
-
-**Không có CDN:**
-
-- Bạn ở Hà Nội, mua hàng từ kho Sài Gòn
-- Đợi 3 ngày vận chuyển
-
-**Có CDN:**
-
-- Hàng được đặt sẵn ở cửa hàng tiện lợi gần nhà
-- Mua xong về luôn
-
-| Server gốc (Origin) | CDN Edge Server          |
-| ------------------- | ------------------------ |
-| Kho chính Sài Gòn   | Cửa hàng tiện lợi Hà Nội |
-| Lưu tất cả hàng     | Lưu hàng hay mua         |
-| Xa khách hàng       | Gần khách hàng           |
-
-**CDN cache gì?**
-
-- ✅ Images, videos
-- ✅ CSS, JavaScript files
-- ✅ Static HTML
-- ❌ Không cache data động (giỏ hàng, đơn hàng)
+| Availability | Downtime/Năm | Ví dụ                           |
+| ------------ | ------------ | ------------------------------- |
+| 99%          | 3.65 ngày    | Quán nghỉ Tết 3-4 ngày          |
+| 99.9%        | 8.76 giờ     | Quán mất điện vài lần/năm       |
+| 99.99%       | 52.6 phút    | Quán chỉ nghỉ sửa máy POS       |
+| 99.999%      | 5.26 phút    | Quán gần như không bao giờ nghỉ |
 
 ---
 
-## 8. Stateless vs Stateful
+## 5. QPS (Queries Per Second)
 
-### 🎯 Ví dụ - Quán Ăn:
+### ❓ QPS là gì?
 
-**Stateful (Nhớ khách):**
+**QPS = Số requests server nhận được mỗi giây**
 
-- Phục vụ A nhớ khách thích ít đường
-- Khách đến → Phải gặp đúng phục vụ A
-- Phục vụ A nghỉ → Khách phải nói lại sở thích
-
-**Stateless (Không nhớ, tra sổ):**
-
-- Sở thích khách được ghi trong app
-- Bất kỳ phục vụ nào cũng tra app được
-- Phục vụ nào nghỉ cũng không sao
+### 📐 Công thức tính QPS:
 
 ```
-Stateful:  Khách → Luôn đến Server 1 (có session)
-Stateless: Khách → Bất kỳ server nào (tra database/Redis)
+QPS = (Số users hoạt động) × (Số actions/user/ngày) / (24 × 3600)
+                                                         │
+                                              86,400 giây/ngày
 ```
 
-**Tại sao Stateless tốt hơn?**
+### 🎯 Ví dụ - Tính QPS cho Twitter:
 
-- ✅ Dễ thêm/bớt server
-- ✅ Server chết → user tự động sang server khác
-- ✅ Scale dễ dàng
+**Giả định:**
+
+- 300 triệu monthly active users (MAU)
+- 50% dùng hàng ngày → 150 triệu daily active users (DAU)
+- Mỗi user post 2 tweets/ngày
+
+**Tính toán:**
+
+```
+QPS = 150,000,000 × 2 / 86,400
+    = 300,000,000 / 86,400
+    ≈ 3,500 QPS
+
+Peak QPS = 2 × QPS = 7,000 QPS
+```
+
+### 💡 Mẹo tính nhanh:
+
+```
+86,400 giây/ngày ≈ 100,000 (làm tròn để tính nhanh)
+
+Vậy: QPS ≈ (DAU × actions/day) / 100,000
+```
 
 ---
 
-## 9. Vertical vs Horizontal Scaling
+## 6. Storage Estimation (Ước tính lưu trữ)
 
-### 🎯 Ví dụ - Vận Chuyển Hàng:
-
-| Vertical Scaling                       | Horizontal Scaling                          |
-| -------------------------------------- | ------------------------------------------- |
-| Mua xe tải to hơn                      | Mua thêm nhiều xe tải nhỏ                   |
-| **Scale Up**                           | **Scale Out**                               |
-| Nâng cấp RAM, CPU                      | Thêm nhiều servers                          |
-| Có giới hạn (xe to nhất là bao nhiêu?) | Không giới hạn (mua bao nhiêu xe cũng được) |
-| Đơn giản nhưng đắt                     | Phức tạp nhưng linh hoạt                    |
-
-**Thực tế:**
-
-- **Startup nhỏ**: Vertical (đơn giản)
-- **Scale lớn**: Horizontal (không bị giới hạn)
-
----
-
-## 10. Database Sharding
-
-### 🎯 Ví dụ - Thư Viện Lớn:
-
-**Không Sharding:**
-
-- 1 triệu sách trong 1 phòng
-- Tìm sách = Mò kim đáy bể
-
-**Có Sharding:**
-
-- Phòng A: Sách tên tác giả A-F
-- Phòng B: Sách tên tác giả G-M
-- Phòng C: Sách tên tác giả N-Z
-- Tìm sách của "Nguyễn Nhật Ánh" → Vào phòng C
+### 📐 Công thức:
 
 ```
-user_id % 4 = ?
-├── 0 → Shard 0
-├── 1 → Shard 1
-├── 2 → Shard 2
-└── 3 → Shard 3
+Daily Storage = DAU × actions/day × avg_size × % có media
+Yearly Storage = Daily Storage × 365
+N-year Storage = Yearly Storage × N
 ```
 
-**Sharding Key quan trọng:**
+### 🎯 Ví dụ - Tính Storage cho Twitter:
 
-- Chọn key phân tán đều data
-- Thường dùng: user_id, order_id
+**Giả định:**
 
----
+- 150 triệu DAU
+- 2 tweets/ngày
+- 10% tweets có media (ảnh/video)
+- Avg media size = 1 MB
+- Lưu trữ 5 năm
 
-## 11. Message Queue
+**Tính toán:**
 
-### 🎯 Ví dụ - Quán Trà Sữa:
+```
+Daily media storage = 150M × 2 × 10% × 1 MB
+                    = 30,000,000 MB
+                    = 30 TB/ngày
 
-**Không có Queue:**
-
-- Nhân viên nhận order → Pha ngay → Trả khách
-- Khách đông → Xếp hàng dài, nhân viên quá tải
-
-**Có Message Queue:**
-
-- Nhân viên A nhận order → Viết vào giấy, đặt lên quầy (Queue)
-- Nhân viên B lấy giấy → Pha trà sữa
-- Khách nhận số, ngồi chờ → Gọi số khi xong
-
-| Producer           | Queue            | Consumer          |
-| ------------------ | ---------------- | ----------------- |
-| Nhân viên thu ngân | Chồng giấy order | Nhân viên pha chế |
-| Web Server         | Kafka/RabbitMQ   | Worker            |
-
-**Lợi ích:**
-
-- ✅ **Decoupling**: Thu ngân & pha chế làm độc lập
-- ✅ **Buffer**: Đông khách → Chồng giấy cao lên, không ai bị overload
-- ✅ **Async**: Khách không cần đứng chờ
+5-year storage = 30 TB × 365 × 5
+               = 54,750 TB
+               ≈ 55 PB
+```
 
 ---
 
 # PHẦN 2: BÀI LAB THỰC HÀNH 🧪
 
-## Lab: Xây Dựng Kiến Trúc Scale Từ Zero
+## Lab: Ước Tính Capacity Cho Hệ Thống Thực Tế
 
 ### Mục tiêu Lab
 
-- Setup hệ thống với Load Balancer, 2 App Servers, Cache, Database Master-Slave
-- Hiểu cách các components kết nối với nhau
-- Test failover và caching
+- Thực hành ước tính QPS, Storage, Bandwidth
+- Áp dụng các con số latency vào quyết định design
+- Tính toán availability requirements
 
-### Yêu cầu
+### Bài tập 1: Ước tính cho hệ thống Instagram-like
 
-- Docker Desktop đã cài đặt
-- Kiến thức cơ bản về Docker Compose
+**Yêu cầu**: Thiết kế hệ thống photo sharing với specs:
 
-### Cấu trúc thư mục
+- 500 triệu MAU
+- 60% dùng hàng ngày
+- Mỗi user xem 20 ảnh/ngày
+- Mỗi user upload 1 ảnh/2 ngày
+- Avg photo size = 2 MB
+- Lưu trữ 10 năm
+
+**Bài giải:**
 
 ```
-scale-lab/
-├── docker-compose.yml
-├── nginx/
-│   └── nginx.conf
-├── app/
-│   ├── Dockerfile
-│   ├── package.json
-│   └── server.js
-└── README.md
+📊 Bước 1: Tính DAU
+DAU = 500M × 60% = 300 triệu
+
+📊 Bước 2: Tính Read QPS (xem ảnh)
+Read QPS = 300M × 20 / 86,400
+         = 6,000,000,000 / 86,400
+         ≈ 70,000 QPS
+
+Peak Read QPS = 2 × 70,000 = 140,000 QPS
+
+📊 Bước 3: Tính Write QPS (upload ảnh)
+Upload/ngày = 300M × 0.5 = 150M ảnh/ngày
+Write QPS = 150M / 86,400 ≈ 1,700 QPS
+
+Peak Write QPS = 2 × 1,700 = 3,400 QPS
+
+📊 Bước 4: Tính Daily Storage
+Daily storage = 150M × 2 MB = 300 TB/ngày
+
+📊 Bước 5: Tính 10-year Storage
+10-year storage = 300 TB × 365 × 10
+                = 1,095,000 TB
+                ≈ 1.1 EB (Exabyte)
+
+📊 Bước 6: Tính Bandwidth
+Upload bandwidth = 300 TB / 86,400 = 3.5 GB/s
+Download bandwidth = (300M × 20 × 2 MB) / 86,400
+                   = 12,000 TB / 86,400
+                   = 140 GB/s
 ```
 
-### Bước 1: Tạo thư mục dự án
+### Bài tập 2: So sánh Storage Options
 
-```bash
-mkdir -p scale-lab/{nginx,app}
-cd scale-lab
-```
+Dựa vào latency numbers, quyết định storage nào phù hợp:
 
-### Bước 2: Tạo App Server (Node.js)
+| Scenario                       | Storage Choice      | Lý do                         |
+| ------------------------------ | ------------------- | ----------------------------- |
+| Session data (đọc mỗi request) | Redis (Memory)      | 100ns vs 10ms disk            |
+| User profile                   | Database + Cache    | Đọc nhiều, cache thường xuyên |
+| Photos                         | Object Storage (S3) | Large files, ít đọc lại       |
+| Video streaming                | CDN                 | Giảm latency cho users        |
+| Logs                           | HDD/Cold storage    | Truy cập không thường xuyên   |
 
-**File: `app/package.json`**
+### Bài tập 3: Tính Availability cần thiết
 
-```json
-{
-  "name": "scale-demo",
-  "version": "1.0.0",
-  "main": "server.js",
-  "dependencies": {
-    "express": "^4.18.2",
-    "ioredis": "^5.3.2",
-    "pg": "^8.11.3"
-  }
-}
-```
+**Scenario**: E-commerce website, doanh thu 10 tỷ/ngày
 
-**File: `app/server.js`**
+| Availability | Downtime/năm | Mất doanh thu |
+| ------------ | ------------ | ------------- |
+| 99%          | 3.65 ngày    | ~100 triệu    |
+| 99.9%        | 8.76 giờ     | ~4 triệu      |
+| 99.99%       | 52.6 phút    | ~360 nghìn    |
+| 99.999%      | 5.26 phút    | ~36 nghìn     |
 
-```javascript
-const express = require("express");
-const Redis = require("ioredis");
-const { Pool } = require("pg");
+**Kết luận**: E-commerce cần ít nhất **99.9%** availability.
 
-const app = express();
-const PORT = 3000;
-const SERVER_ID = process.env.SERVER_ID || "unknown";
+### Bài tập 4: Cheat Sheet Calculator (Python)
 
-// Redis connection (Cache)
-const redis = new Redis({
-  host: "redis",
-  port: 6379,
-});
+```python
+#!/usr/bin/env python3
+"""
+Back-of-the-envelope Estimation Calculator
+"""
 
-// PostgreSQL connection (Database)
-const pool = new Pool({
-  host: "postgres-master",
-  database: "testdb",
-  user: "postgres",
-  password: "postgres123",
-  port: 5432,
-});
+# Constants
+SECONDS_PER_DAY = 86_400
+SECONDS_PER_YEAR = 365 * SECONDS_PER_DAY
 
-app.use(express.json());
+# Data Units
+KB = 1024
+MB = 1024 * KB
+GB = 1024 * MB
+TB = 1024 * GB
+PB = 1024 * TB
 
-// Health check
-app.get("/health", (req, res) => {
-  res.json({
-    status: "healthy",
-    server: SERVER_ID,
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Demo: Get user with caching
-app.get("/user/:id", async (req, res) => {
-  const userId = req.params.id;
-  const cacheKey = `user:${userId}`;
-
-  try {
-    // 1. Check cache first
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      console.log(`[${SERVER_ID}] Cache HIT for user ${userId}`);
-      return res.json({
-        source: "cache",
-        server: SERVER_ID,
-        data: JSON.parse(cached),
-      });
+def calculate_qps(dau: int, actions_per_day: float) -> dict:
+    """Calculate QPS and Peak QPS"""
+    qps = dau * actions_per_day / SECONDS_PER_DAY
+    return {
+        "QPS": round(qps),
+        "Peak QPS (2x)": round(qps * 2),
+        "Peak QPS (10x)": round(qps * 10)
     }
 
-    // 2. Cache miss - query database
-    console.log(`[${SERVER_ID}] Cache MISS for user ${userId}`);
-    const result = await pool.query("SELECT * FROM users WHERE id = $1", [
-      userId,
-    ]);
+def calculate_storage(
+    dau: int,
+    items_per_day: float,
+    avg_size_bytes: int,
+    years: int
+) -> dict:
+    """Calculate storage requirements"""
+    daily_bytes = dau * items_per_day * avg_size_bytes
+    yearly_bytes = daily_bytes * 365
+    total_bytes = yearly_bytes * years
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
+    return {
+        "Daily Storage": f"{daily_bytes / TB:.2f} TB",
+        "Yearly Storage": f"{yearly_bytes / PB:.2f} PB",
+        f"{years}-Year Storage": f"{total_bytes / PB:.2f} PB"
     }
 
-    // 3. Store in cache for 60 seconds
-    await redis.setex(cacheKey, 60, JSON.stringify(result.rows[0]));
-
-    res.json({
-      source: "database",
-      server: SERVER_ID,
-      data: result.rows[0],
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Demo: Create user (Write to master)
-app.post("/user", async (req, res) => {
-  const { name, email } = req.body;
-
-  try {
-    const result = await pool.query(
-      "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *",
-      [name, email]
-    );
-
-    console.log(`[${SERVER_ID}] Created user: ${result.rows[0].id}`);
-    res.json({
-      server: SERVER_ID,
-      data: result.rows[0],
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Show which server handled the request
-app.get("/", (req, res) => {
-  res.json({
-    message: "Scale Demo API",
-    server: SERVER_ID,
-    endpoints: ["GET /health", "GET /user/:id", "POST /user"],
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`[${SERVER_ID}] Server running on port ${PORT}`);
-});
-```
-
-**File: `app/Dockerfile`**
-
-```dockerfile
-FROM node:18-alpine
-
-WORKDIR /app
-
-COPY package.json .
-RUN npm install
-
-COPY server.js .
-
-CMD ["node", "server.js"]
-```
-
-### Bước 3: Cấu hình Nginx Load Balancer
-
-**File: `nginx/nginx.conf`**
-
-```nginx
-upstream app_servers {
-    # Round-robin load balancing
-    server app1:3000;
-    server app2:3000;
-}
-
-server {
-    listen 80;
-
-    location / {
-        proxy_pass http://app_servers;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+def calculate_bandwidth(daily_storage_bytes: int) -> dict:
+    """Calculate bandwidth from daily storage"""
+    bytes_per_second = daily_storage_bytes / SECONDS_PER_DAY
+    return {
+        "Bandwidth": f"{bytes_per_second / GB:.2f} GB/s",
+        "Peak Bandwidth (2x)": f"{bytes_per_second * 2 / GB:.2f} GB/s"
     }
-}
+
+def availability_downtime(availability_percent: float) -> dict:
+    """Calculate downtime from availability"""
+    downtime_percent = 100 - availability_percent
+    downtime_seconds_year = (downtime_percent / 100) * SECONDS_PER_YEAR
+
+    return {
+        "Availability": f"{availability_percent}%",
+        "Downtime/year": format_time(downtime_seconds_year),
+        "Downtime/month": format_time(downtime_seconds_year / 12),
+        "Downtime/day": format_time(downtime_seconds_year / 365)
+    }
+
+def format_time(seconds: float) -> str:
+    """Format seconds to human readable"""
+    if seconds >= 86400:
+        return f"{seconds / 86400:.2f} days"
+    elif seconds >= 3600:
+        return f"{seconds / 3600:.2f} hours"
+    elif seconds >= 60:
+        return f"{seconds / 60:.2f} minutes"
+    elif seconds >= 1:
+        return f"{seconds:.2f} seconds"
+    else:
+        return f"{seconds * 1000:.2f} ms"
+
+# Example: Twitter-like system
+if __name__ == "__main__":
+    print("=" * 50)
+    print("Twitter-like System Estimation")
+    print("=" * 50)
+
+    MAU = 300_000_000
+    DAU = int(MAU * 0.5)  # 50% daily active
+    TWEETS_PER_DAY = 2
+    MEDIA_PERCENT = 0.1
+    MEDIA_SIZE = 1 * MB
+    STORAGE_YEARS = 5
+
+    print(f"\nAssumptions:")
+    print(f"  MAU: {MAU:,}")
+    print(f"  DAU: {DAU:,}")
+    print(f"  Tweets/day: {TWEETS_PER_DAY}")
+    print(f"  Media percent: {MEDIA_PERCENT * 100}%")
+
+    print(f"\nQPS Estimation:")
+    qps = calculate_qps(DAU, TWEETS_PER_DAY)
+    for k, v in qps.items():
+        print(f"  {k}: {v:,}")
+
+    print(f"\nStorage Estimation (Media only):")
+    storage = calculate_storage(
+        DAU,
+        TWEETS_PER_DAY * MEDIA_PERCENT,
+        MEDIA_SIZE,
+        STORAGE_YEARS
+    )
+    for k, v in storage.items():
+        print(f"  {k}: {v}")
+
+    print(f"\nAvailability Comparison:")
+    for avail in [99, 99.9, 99.99, 99.999]:
+        result = availability_downtime(avail)
+        print(f"  {result['Availability']}: {result['Downtime/year']} downtime/year")
 ```
-
-### Bước 4: Docker Compose
-
-**File: `docker-compose.yml`**
-
-```yaml
-version: "3.8"
-
-services:
-  # Load Balancer
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "8080:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
-    depends_on:
-      - app1
-      - app2
-
-  # App Server 1
-  app1:
-    build: ./app
-    environment:
-      - SERVER_ID=SERVER-1
-    depends_on:
-      - redis
-      - postgres-master
-
-  # App Server 2
-  app2:
-    build: ./app
-    environment:
-      - SERVER_ID=SERVER-2
-    depends_on:
-      - redis
-      - postgres-master
-
-  # Cache Layer (Redis)
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-  # Database Master
-  postgres-master:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres123
-      - POSTGRES_DB=testdb
-    ports:
-      - "5432:5432"
-    volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-```
-
-**File: `init.sql`** (Khởi tạo database)
-
-```sql
-CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Insert sample data
-INSERT INTO users (name, email) VALUES
-    ('Nguyen Van A', 'a@example.com'),
-    ('Tran Thi B', 'b@example.com'),
-    ('Le Van C', 'c@example.com');
-```
-
-### Bước 5: Chạy Lab
-
-```bash
-# 1. Start all services
-docker-compose up -d --build
-
-# 2. Wait for services to be ready
-sleep 10
-
-# 3. Test Load Balancer - Chạy 5 lần, xem server nào xử lý
-for i in {1..5}; do
-  curl -s http://localhost:8080/ | jq '.server'
-done
-
-# 4. Test Caching
-# Lần 1: Cache MISS (query database)
-curl -s http://localhost:8080/user/1 | jq '.'
-
-# Lần 2: Cache HIT (từ Redis)
-curl -s http://localhost:8080/user/1 | jq '.'
-
-# 5. Test Create User (Write)
-curl -X POST http://localhost:8080/user \
-  -H "Content-Type: application/json" \
-  -d '{"name": "New User", "email": "new@example.com"}' | jq '.'
-
-# 6. Stop one server - Test failover
-docker-compose stop app1
-
-# Vẫn hoạt động với app2
-curl -s http://localhost:8080/ | jq '.server'
-
-# 7. Cleanup
-docker-compose down -v
-```
-
-### Bài tập mở rộng
-
-1. **Thêm Server thứ 3**: Sửa docker-compose.yml và nginx.conf
-2. **Test Cache TTL**: Đợi 60s và gọi lại, quan sát cache miss
-3. **Thêm Database Slave**: Setup PostgreSQL replication
 
 ---
 
 # PHẦN 3: TỔNG KẾT NỘI DUNG CỐT LÕI 📋
 
-## 7 Điểm Cần Nhớ
+## 6 Điểm Cần Nhớ
 
-### 1️⃣ Single Server → Scale Architecture
-
-```
-[User] → [DNS] → [Load Balancer] → [Web Servers] → [Cache] → [Database]
-```
-
-### 2️⃣ Vertical vs Horizontal Scaling
-
-- **Vertical**: Nâng cấp 1 máy (giới hạn)
-- **Horizontal**: Thêm nhiều máy (không giới hạn)
-
-### 3️⃣ Load Balancer
-
-- Phân tải đều đến các servers
-- Failover khi server chết
-- Public IP → Private IPs
-
-### 4️⃣ Database Replication
-
-- **Master**: Write operations
-- **Slave**: Read operations (copy từ Master)
-- Tỷ lệ thường: 1 Master, nhiều Slaves
-
-### 5️⃣ Cache (Redis/Memcached)
-
-- Lưu data hay truy cập vào memory
-- Nhanh hơn database 100-1000x
-- TTL để data không bị cũ
-
-### 6️⃣ CDN
-
-- Đặt static files gần user
-- Giảm latency, tăng tốc load
-- Cache: images, CSS, JS, videos
-
-### 7️⃣ Stateless Architecture
-
-- Không lưu state trong server
-- State lưu ở Redis/Database
-- Dễ scale, dễ failover
-
----
-
-## Checklist Áp Dụng Vào Công Việc
-
-| Câu hỏi                     | Khi nào cần            | Giải pháp                    |
-| --------------------------- | ---------------------- | ---------------------------- |
-| App chậm, 1 server quá tải? | Traffic tăng           | Load Balancer + thêm servers |
-| Database là bottleneck?     | Query chậm             | Cache + DB Replication       |
-| Static files load chậm?     | Users xa server        | CDN                          |
-| Session bị mất khi restart? | Scale web tier         | Stateless + Redis sessions   |
-| Database quá lớn?           | > 1TB data             | Sharding                     |
-| Tasks chạy lâu?             | Video encoding, emails | Message Queue                |
-
----
-
-## Sơ Đồ Kiến Trúc Hoàn Chỉnh
+### 1️⃣ Power of Two
 
 ```
-                        ┌─────────────────────────────────────────────────┐
-                        │                    USERS                        │
-                        │            (Web Browser / Mobile App)           │
-                        └─────────────────────────┬───────────────────────┘
-                                                  │
-                                                  ▼
-                        ┌─────────────────────────────────────────────────┐
-                        │                     DNS                         │
-                        │              (api.mysite.com → IP)              │
-                        └─────────────────────────┬───────────────────────┘
-                                                  │
-                        ┌─────────────────────────┴───────────────────────┐
-                        │                                                  │
-                        ▼                                                  ▼
-    ┌───────────────────────────────────┐          ┌──────────────────────────────┐
-    │              CDN                  │          │       LOAD BALANCER          │
-    │     (Static: JS, CSS, Images)     │          │      (Nginx, HAProxy)        │
-    └───────────────────────────────────┘          └──────────────┬───────────────┘
-                                                                  │
-                                        ┌─────────────────────────┼─────────────────────────┐
-                                        │                         │                         │
-                                        ▼                         ▼                         ▼
-                              ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
-                              │   Web Server 1  │       │   Web Server 2  │       │   Web Server 3  │
-                              │  (Stateless)    │       │  (Stateless)    │       │  (Stateless)    │
-                              └────────┬────────┘       └────────┬────────┘       └────────┬────────┘
-                                       │                         │                         │
-                                       └─────────────────────────┼─────────────────────────┘
-                                                                 │
-                                       ┌─────────────────────────┼─────────────────────────┐
-                                       │                         │                         │
-                                       ▼                         ▼                         ▼
-                              ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
-                              │    CACHE        │       │  MESSAGE QUEUE  │       │   DATABASE      │
-                              │    (Redis)      │       │    (Kafka)      │       │   (PostgreSQL)  │
-                              └─────────────────┘       └────────┬────────┘       └────────┬────────┘
-                                                                 │                         │
-                                                                 ▼                   ┌─────┴─────┐
-                                                        ┌─────────────────┐          │           │
-                                                        │    WORKERS      │    ┌─────┴─────┐ ┌───┴───┐
-                                                        │ (Async Tasks)   │    │  Master   │ │ Slave │
-                                                        └─────────────────┘    │  (Write)  │ │(Read) │
-                                                                               └───────────┘ └───────┘
+2^10 = 1 KB  (Nghìn)
+2^20 = 1 MB  (Triệu)
+2^30 = 1 GB  (Tỷ)
+2^40 = 1 TB  (Nghìn tỷ)
+2^50 = 1 PB  (Triệu tỷ)
+```
+
+### 2️⃣ Latency Numbers (So sánh tương đối)
+
+```
+Memory (RAM)    : 100 ns      ← NHANH
+SSD             : 16,000 ns   ← 160× chậm hơn RAM
+HDD Seek        : 10,000,000 ns ← 100,000× chậm hơn RAM
+Network (globe) : 150,000,000 ns ← 1,500,000× chậm hơn RAM
+```
+
+### 3️⃣ Availability Numbers (Nines)
+
+```
+99%     → 3.65 ngày downtime/năm
+99.9%   → 8.76 giờ downtime/năm
+99.99%  → 52.6 phút downtime/năm
+99.999% → 5.26 phút downtime/năm
+```
+
+### 4️⃣ QPS Calculation
+
+```
+QPS = DAU × actions_per_day / 86,400
+Peak QPS = QPS × 2 (hoặc × 10 cho critical systems)
+```
+
+### 5️⃣ Storage Calculation
+
+```
+Daily = DAU × items/day × size × media_percent
+Yearly = Daily × 365
+N-year = Yearly × N
+```
+
+### 6️⃣ Tips Khi Ước Tính
+
+```
+✅ Làm tròn số cho dễ tính: 86,400 → 100,000
+✅ Ghi rõ assumptions
+✅ Ghi rõ đơn vị (KB, MB, GB)
+✅ Process quan trọng hơn kết quả chính xác
 ```
 
 ---
 
-_Bài học tiếp theo: Back-of-the-envelope Estimation (Ngày 3)_
+## Cheat Sheet - Số Liệu Cần Nhớ
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    QUICK REFERENCE                           │
+├─────────────────────────────────────────────────────────────┤
+│ Seconds/day    : 86,400    (≈ 100,000 để tính nhanh)        │
+│ Seconds/month  : 2.6M      (≈ 2,500,000)                    │
+│ Seconds/year   : 31.5M     (≈ 30,000,000)                   │
+├─────────────────────────────────────────────────────────────┤
+│ 1 ASCII char   : 1 byte                                      │
+│ 1 Unicode char : 2-4 bytes                                   │
+│ 1 Integer      : 4-8 bytes                                   │
+│ 1 Tweet (text) : ~140 bytes                                  │
+│ 1 Photo (avg)  : 1-2 MB                                      │
+│ 1 Video (1min) : 50-100 MB                                   │
+├─────────────────────────────────────────────────────────────┤
+│ RAM latency    : ~100 ns                                     │
+│ SSD latency    : ~100 μs (1,000× RAM)                        │
+│ HDD latency    : ~10 ms  (100,000× RAM)                      │
+│ Network (DC)   : ~500 μs                                     │
+│ Network (globe): ~150 ms                                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Áp Dụng Vào Công Việc
+
+| Câu hỏi                | Cách ước tính                               |
+| ---------------------- | ------------------------------------------- |
+| Server cần bao nhiêu?  | QPS / capacity_per_server                   |
+| Storage cần bao nhiêu? | DAU × items × size × years                  |
+| Cần cache không?       | Nếu read từ DB > 10ms và read nhiều → Cache |
+| Cần CDN không?         | Nếu users ở nhiều regions → CDN             |
+| SLA bao nhiêu?         | Tính cost of downtime → Chọn nines phù hợp  |
+
+---
+
+_Bài học tiếp theo: A Framework for System Design Interviews (Ngày 4)_
