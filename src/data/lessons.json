@@ -1,0 +1,48 @@
+{
+  "chapters": [
+    {
+      "id": "01_scale_zero_to_millions",
+      "title": "Scale From Zero to Millions of Users",
+      "icon": "📈",
+      "description": "Thiết kế hệ thống từ 1 user đến hàng triệu users",
+      "documents": [
+        {
+          "id": "ban_dich_tieng_viet",
+          "title": "Bản Dịch Tiếng Việt",
+          "type": "translation",
+          "icon": "📖",
+          "file": "ban_dich_tieng_viet.md"
+        },
+        {
+          "id": "giai_thich_va_lab",
+          "title": "Giải Thích & Lab",
+          "type": "explanation",
+          "icon": "🧪",
+          "file": "giai_thich_va_lab.md"
+        }
+      ]
+    },
+    {
+      "id": "02_back_of_envelope_estimation",
+      "title": "Back-of-the-envelope Estimation",
+      "icon": "📈",
+      "description": "Ước tính nhanh capacity và performance của hệ thống",
+      "documents": [
+        {
+          "id": "ban_dich_tieng_viet",
+          "title": "Bản Dịch Tiếng Việt",
+          "type": "translation",
+          "icon": "📖",
+          "file": "ban_dich_tieng_viet.md"
+        },
+        {
+          "id": "giai_thich_va_lab",
+          "title": "Giải Thích & Lab",
+          "type": "explanation",
+          "icon": "🧪",
+          "file": "giai_thich_va_lab.md"
+        }
+      ]
+    }
+  ]
+}
